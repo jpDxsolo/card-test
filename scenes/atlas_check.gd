@@ -22,7 +22,14 @@ func _ready() -> void:
 			)
 			add_child(sprite)
 
+## Routes every cell through the accessor the game will actually use, so this
+## scene exercises all of CardAtlas's public API rather than just face().
 func _texture_at(col: int, row: int) -> Texture2D:
 	if col < Card.RANKS_PER_SUIT:
-		return CardAtlas.face(Card.make(row, col))   # exercises the real lookup path
-	return CardAtlas.cell(col, row)                  # extras: blank, back, jokers
+		return CardAtlas.face(Card.make(row, col))
+	var coord := Vector2i(col, row)
+	if coord == CardAtlas.theme.back_cell:
+		return CardAtlas.back()
+	if coord == CardAtlas.theme.empty_slot_cell:
+		return CardAtlas.empty_slot()
+	return CardAtlas.cell(col, row)   # jokers — no gameplay meaning

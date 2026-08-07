@@ -295,6 +295,13 @@ clicks on the wrong card. `CardTheme.card_size()` returns `(42, 60)` and is the 
 guard between adjacent artwork (23 px horizontally). Linear filtering samples a one-texel
 neighbourhood, so bleeding cannot occur regardless of which sheet variant is used.
 
+**Caveat for future themes.** `kenney_default.tres` stores only its `atlas` reference —
+every metric above comes from the `CardTheme` script defaults, which describe *this* sheet.
+A theme created for different art will silently inherit Kenney's numbers and look configured
+while being wrong. This is left as-is deliberately: it makes the common case trivial, and
+`atlas_check.tscn` catches a mismatch on the first run. Just override every field when
+authoring a second theme.
+
 **Open: source resolution.** 42 × 60 upscales ~2.7× on a 1280 × 720 desktop canvas
 (height-constrained to roughly 112 × 160 per card in a 7-row pyramid). Expect visible
 softness, with the rank glyphs blurring first; portrait mobile is fine at ~1.3×. Deliberately
@@ -549,17 +556,20 @@ cost of fixing it is still bounded.
 
 ### Current status
 
-**M0 is complete.** `scenes/atlas_check.tscn` renders the full 14 × 4 sheet through the real
-`CardAtlas.face()` lookup path; theme metrics in §6 are measured rather than guessed.
+**M0 is complete and closed out.**
 
-Two loose ends carried into M1:
-
-- The POC files (`card.gd`, `card.tscn`, `board.tscn`, `card_clubs_A.png`,
-  `card_hearts_Q.png`) are still in the repo root and should be deleted.
-- `CardAtlas.back()` and `empty_slot()` are written but not yet exercised by anything.
-  `CardNode` picks them up in M2.
+- `scenes/atlas_check.tscn` renders all 56 sheet cells, routing each through the accessor
+  the game will really use — `face()` for the 52 cards, `back()` and `empty_slot()` for
+  their designated cells, `cell()` only for the two jokers. The whole of `CardAtlas`'s public
+  API is therefore under test, and a wrong `back_cell` / `empty_slot_cell` in the theme shows
+  up immediately rather than lying dormant until M2.
+- Theme metrics in §6 are measured from the sheet, not guessed.
+- POC files (`card.gd`, `card.tscn`, `board.tscn`, and the two 64 × 64 placeholder PNGs) are
+  deleted. They remain in git history at `beea85f` if ever needed.
 
 **Next: M1** — the pure rules engine, headless and test-first. Nothing in M1 touches a Node.
+Start with `Ruleset` and `SlotGraph`: the slot-graph design in §4 is what the entire variant
+system rests on, so it's worth building slowly and pushing on before moving to `GameState`.
 
 ---
 
