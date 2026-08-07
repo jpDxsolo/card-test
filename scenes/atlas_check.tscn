@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://buavd038p2kxd"]
+
+[ext_resource type="Script" uid="uid://cl0ssjhla3emo" path="res://scenes/atlas_check.gd" id="1_7af6d"]
+
+[node name="AtlasCheck" type="Node2D" unique_id=608904910]
+script = ExtResource("1_7af6d")

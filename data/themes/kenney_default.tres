@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="CardTheme" format=3 uid="uid://d37qc4gafyi5i"]
+
+[ext_resource type="Texture2D" uid="uid://n618s3te4uca" path="res://assets/cards/cards_atlas.png" id="1_erb08"]
+[ext_resource type="Script" uid="uid://b81ndvqgddrmp" path="res://game/view/card_theme.gd" id="1_goe7w"]
+
+[resource]
+script = ExtResource("1_goe7w")
+atlas = ExtResource("1_erb08")
+metadata/_custom_type_script = "uid://b81ndvqgddrmp"
