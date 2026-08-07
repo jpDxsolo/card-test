@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://cg266yrtot12n"]
+
+[ext_resource type="PackedScene" uid="uid://cfmg040fe1skb" path="res://card.tscn" id="1_p0ybc"]
+[ext_resource type="Texture2D" uid="uid://bvuahlctp7p63" path="res://card_clubs_A.png" id="2_psm7c"]
+
+[node name="Board" type="Node2D" unique_id=1071238774]
+
+[node name="Card" parent="." unique_id=1109444717 instance=ExtResource("1_p0ybc")]
+position = Vector2(429, 85)
+
+[node name="Sprite2D" parent="Card" index="0" unique_id=538567389]
+texture = ExtResource("2_psm7c")
+
+[node name="Card2" parent="." unique_id=1396268505 instance=ExtResource("1_p0ybc")]
+position = Vector2(68, 209)
+
+[editable path="Card"]
+[editable path="Card2"]
