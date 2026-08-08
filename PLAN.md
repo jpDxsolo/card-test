@@ -347,6 +347,13 @@ The algorithm:
    between profiles.
 2. Lay everything out in **card units** — pyramid rows overlap vertically by ~50%, columns
    by 0, and the profile decides where the non-tableau piles anchor.
+
+   ⚠️ **The two axes are not the same size.** `Slot.grid_pos.x` is in card *widths*,
+   `grid_pos.y` is in card *heights*, so `(1, 1)` is one whole card and a 7-row pyramid
+   measures 7 × 4. `LayoutResolver` must scale x by `card_size.x` and y by `card_size.y`
+   independently. Scaling both by width squashes rows to a 65% overlap and makes
+   `bounds()` under-report the pyramid's height by 30%, so cards overflow the box that
+   was just fitted to them.
 3. Compute the bounding box in card units, derive `scale = min(vw / bw, vh / bh)` with a
    margin factor, and centre.
 4. Convert every `grid_pos` to a pixel `Rect2`.
