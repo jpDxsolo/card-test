@@ -563,7 +563,20 @@ cost of fixing it is still bounded.
 
 ### Current status
 
-**M0 is complete and closed out.**
+**M0 and M1 are complete.** The rules engine plays classic Pyramid end to end, headless:
+deal by seed, enumerate legal moves, apply them, detect won and stuck. 63 tests, no Nodes.
+
+**Next: M2** — the first pixels. `CardNode`, `LayoutResolver`, `BoardView.sync_to_state()`.
+Large enough to split: layout maths first, then the view that consumes it. M2 is also when
+the §6 question about 42 × 60 source art can finally be judged on a real screen.
+
+Deliberately still absent from the engine, each because it changes control flow and needs a
+variant that exercises it (M8): waste recycling / redeals, `allow_covering_pair`, and
+`Move.Zone.CELL`. `Ruleset` already carries their config fields as inert data.
+
+---
+
+**M0 detail, for reference.**
 
 - `scenes/atlas_check.tscn` renders all 56 sheet cells, routing each through the accessor
   the game will really use — `face()` for the 52 cards, `back()` and `empty_slot()` for

@@ -27,6 +27,15 @@ func _ready() -> void:
 	_test_exposure_at_deal()
 	_test_exposure_uncovering()
 	_test_state_copy()
+	_test_kings_go_alone()
+	_test_pair_to_thirteen()
+	_test_pair_enumeration()
+	_test_covered_cards_cannot_match()
+	_test_apply_match_pair()
+	_test_apply_draw()
+	_test_draw_count_three()
+	_test_win_conditions()
+	_test_stuck()
 	print("\n%d passed, %d failed" % [_passed, _failed])
 
 func _check(condition: bool, label: String) -> void:
@@ -132,8 +141,10 @@ func _test_shipped_ruleset() -> void:
 
 # --- M1b-1: dealing, exposure, state copying ---------------------------------
 
+## Always a fresh copy. load() returns a shared cached resource, so a test that
+## tweaked a field on it would silently corrupt every test that ran afterwards.
 func _classic() -> Ruleset:
-	return load(CLASSIC) as Ruleset
+	return (load(CLASSIC) as Ruleset).duplicate() as Ruleset
 
 func _test_deal_shape() -> void:
 	var rules := _classic()
@@ -218,3 +229,176 @@ func _test_state_copy() -> void:
 	_check(original.wastes[0].is_empty(), "copy: waste piles are deep-copied, not shared")
 	_check(original.stock_index == 0, "copy: scalars are independent")
 	_check(RulesEngine.score(copy) == 27, "score: removing one tableau card scores 27")
+
+
+# --- M1b-2: moves, legality, application -------------------------------------
+
+# Rank indices, so the intent of each fixture is readable.
+const ACE := 0
+const TWO := 1
+const THREE := 2
+const QUEEN := 11
+const KING := 12
+
+## A board with nothing on it. Move-generation tests place their own cards so
+## they never depend on what a particular shuffle happened to produce.
+func _empty_state(graph: SlotGraph) -> GameState:
+	var state := GameState.new()
+	state.tableau = PackedInt32Array()
+	state.tableau.resize(graph.size())
+	state.tableau.fill(Card.NONE)
+	state.stock = PackedInt32Array()
+	state.stock_index = 0
+	var piles: Array[PackedInt32Array] = [PackedInt32Array()]
+	state.wastes = piles
+	state.foundation = PackedInt32Array()
+	state.cells = PackedInt32Array()
+	return state
+
+func _count(moves: Array[Move], t: Move.Type) -> int:
+	var n := 0
+	for move in moves:
+		if move.type == t:
+			n += 1
+	return n
+
+func _test_kings_go_alone() -> void:
+	var rules := _classic()
+	var graph := SlotGraph.new(rules)
+	var state := _empty_state(graph)
+	state.tableau[21] = Card.make(Card.Suit.SPADES, KING)
+
+	var moves := RulesEngine.get_legal_moves(state, graph, rules)
+	_check(_count(moves, Move.Type.DISCARD_SINGLE) == 1, "moves: a lone exposed King is discardable")
+	_check(_count(moves, Move.Type.MATCH_PAIR) == 0, "moves: a King never also forms a pair")
+
+func _test_pair_to_thirteen() -> void:
+	var rules := _classic()
+	var graph := SlotGraph.new(rules)
+	var state := _empty_state(graph)
+	state.tableau[21] = Card.make(Card.Suit.HEARTS, ACE)      # worth 1
+	state.tableau[22] = Card.make(Card.Suit.SPADES, QUEEN)    # worth 12
+
+	var moves := RulesEngine.get_legal_moves(state, graph, rules)
+	_check(_count(moves, Move.Type.MATCH_PAIR) == 1, "moves: A + Q is one pair, emitted once not twice")
+
+func _test_pair_enumeration() -> void:
+	var rules := _classic()
+	var graph := SlotGraph.new(rules)
+	var state := _empty_state(graph)
+	state.tableau[21] = Card.make(Card.Suit.HEARTS, ACE)
+	state.tableau[22] = Card.make(Card.Suit.SPADES, QUEEN)
+	state.tableau[23] = Card.make(Card.Suit.CLUBS, QUEEN)
+
+	var moves := RulesEngine.get_legal_moves(state, graph, rules)
+	_check(_count(moves, Move.Type.MATCH_PAIR) == 2, "moves: one Ace and two Queens make two distinct pairs")
+
+## The rule that defines Pyramid. Slot 15 sits under 21 and 22, so its Ace is
+## unplayable until both are gone -- even though the Queen it would pair with
+## is sitting exposed the whole time.
+func _test_covered_cards_cannot_match() -> void:
+	var rules := _classic()
+	var graph := SlotGraph.new(rules)
+	var state := _empty_state(graph)
+	state.tableau[15] = Card.make(Card.Suit.HEARTS, ACE)
+	state.tableau[23] = Card.make(Card.Suit.SPADES, QUEEN)
+	state.tableau[21] = Card.make(Card.Suit.CLUBS, TWO)       # blockers worth 2 and 3,
+	state.tableau[22] = Card.make(Card.Suit.CLUBS, THREE)     # which pair with nothing here
+
+	var moves := RulesEngine.get_legal_moves(state, graph, rules)
+	_check(_count(moves, Move.Type.MATCH_PAIR) == 0, "moves: a covered Ace cannot pair with an exposed Queen")
+
+	state.tableau[21] = Card.NONE
+	_check(
+		_count(RulesEngine.get_legal_moves(state, graph, rules), Move.Type.MATCH_PAIR) == 0,
+		"moves: clearing one of two coverers is not enough"
+	)
+
+	state.tableau[22] = Card.NONE
+	_check(
+		_count(RulesEngine.get_legal_moves(state, graph, rules), Move.Type.MATCH_PAIR) == 1,
+		"moves: clearing both coverers makes the pair legal"
+	)
+
+func _test_apply_match_pair() -> void:
+	var rules := _classic()
+	var graph := SlotGraph.new(rules)
+	var state := _empty_state(graph)
+	state.tableau[21] = Card.make(Card.Suit.HEARTS, ACE)
+	state.tableau[22] = Card.make(Card.Suit.SPADES, QUEEN)
+
+	var moves := RulesEngine.get_legal_moves(state, graph, rules)
+	RulesEngine.apply(state, moves[0], rules)
+	_check(state.tableau[21] == Card.NONE, "apply: the first card leaves the tableau")
+	_check(state.tableau[22] == Card.NONE, "apply: the second card leaves the tableau")
+	_check(state.foundation.size() == 2, "apply: both cards reach the foundation")
+	_check(RulesEngine.score(state) == 0, "apply: the tableau is now clear")
+
+func _test_apply_draw() -> void:
+	var rules := _classic()
+	var graph := SlotGraph.new(rules)
+	var state := _empty_state(graph)
+	var king := Card.make(Card.Suit.HEARTS, KING)
+	state.stock = PackedInt32Array([king, Card.make(Card.Suit.CLUBS, TWO)])
+
+	_check(
+		_count(RulesEngine.get_legal_moves(state, graph, rules), Move.Type.DRAW_STOCK) == 1,
+		"moves: drawing is legal while the stock has cards"
+	)
+
+	RulesEngine.apply(state, Move.new(Move.Type.DRAW_STOCK), rules)
+	_check(state.stock_index == 1, "apply: drawing advances the stock pointer")
+	_check(state.wastes[0].size() == 1, "apply: the drawn card lands on the waste")
+	_check(state.peek_waste(0) == king, "apply: the card drawn is the top of the stock")
+
+	# The waste top plays exactly like an exposed tableau card.
+	_check(
+		_count(RulesEngine.get_legal_moves(state, graph, rules), Move.Type.DISCARD_SINGLE) == 1,
+		"moves: a King on the waste is discardable"
+	)
+
+	state.stock_index = 2
+	_check(
+		_count(RulesEngine.get_legal_moves(state, graph, rules), Move.Type.DRAW_STOCK) == 0,
+		"moves: no draw once the stock is exhausted"
+	)
+
+func _test_draw_count_three() -> void:
+	var rules := _classic()
+	rules.draw_count = 3                      # Tut's Tomb deals three at a time
+	var graph := SlotGraph.new(rules)
+	var state := _empty_state(graph)
+	state.stock = PackedInt32Array([0, 1, 2, 3])
+
+	RulesEngine.apply(state, Move.new(Move.Type.DRAW_STOCK), rules)
+	_check(state.wastes[0].size() == 3, "draw_count 3: three cards move to the waste")
+	_check(state.stock_index == 3, "draw_count 3: the stock pointer advances by three")
+
+	RulesEngine.apply(state, Move.new(Move.Type.DRAW_STOCK), rules)
+	_check(state.wastes[0].size() == 4, "draw_count 3: a short final draw takes what is left")
+
+func _test_win_conditions() -> void:
+	var strict := _classic()
+	var graph := SlotGraph.new(strict)
+	var state := _empty_state(graph)           # tableau already clear
+	state.stock = PackedInt32Array([Card.make(Card.Suit.HEARTS, TWO)])
+
+	_check(not RulesEngine.is_won(state, strict), "win: strict rules need the stock cleared too")
+
+	var relaxed := _classic()
+	relaxed.win_condition = Ruleset.WinCondition.CLEAR_TABLEAU
+	_check(RulesEngine.is_won(state, relaxed), "win: relaxed rules win on a clear tableau alone")
+
+	state.stock_index = 1
+	_check(RulesEngine.is_won(state, strict), "win: strict rules win once stock and waste are empty")
+
+func _test_stuck() -> void:
+	var rules := _classic()
+	var graph := SlotGraph.new(rules)
+	var state := _empty_state(graph)
+	state.tableau[21] = Card.make(Card.Suit.HEARTS, TWO)
+	state.tableau[22] = Card.make(Card.Suit.CLUBS, THREE)
+
+	_check(RulesEngine.is_stuck(state, graph, rules), "stuck: two cards summing to 5, no stock, no moves")
+	_check(not RulesEngine.is_won(state, rules), "stuck: a stuck game is not a won one")
+	_check(RulesEngine.is_over(state, graph, rules), "stuck: the game is over either way")

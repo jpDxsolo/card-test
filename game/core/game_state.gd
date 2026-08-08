@@ -52,3 +52,28 @@ func push_waste(pile_index: int, card_id: int) -> void:
 	var pile := wastes[pile_index]
 	pile.append(card_id)
 	wastes[pile_index] = pile
+
+
+## Removes and returns the top card of a waste pile, or Card.NONE if empty.
+func pop_waste(pile_index: int) -> int:
+	var pile := wastes[pile_index]
+	if pile.is_empty():
+		return Card.NONE
+	var card := pile[pile.size() - 1]
+	pile.remove_at(pile.size() - 1)
+	wastes[pile_index] = pile
+	return card
+
+
+## Top card of a waste pile without removing it, or Card.NONE if empty.
+func peek_waste(pile_index: int) -> int:
+	var pile := wastes[pile_index]
+	return Card.NONE if pile.is_empty() else pile[pile.size() - 1]
+
+
+## Appends to the foundation, writing back for the same copy-on-write reason
+## as push_waste.
+func push_foundation(card_id: int) -> void:
+	var pile := foundation
+	pile.append(card_id)
+	foundation = pile
