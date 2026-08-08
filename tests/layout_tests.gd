@@ -27,6 +27,9 @@ func run(check: Callable) -> void:
 	_test_board_fits_and_is_centred()
 	_test_pile_counts()
 	_test_degenerate_viewport()
+	_test_hit_test_basics()
+	_test_hit_test_prefers_the_card_on_top()
+	_test_hit_test_ignores_empty_slots()
 
 
 func _rules() -> Ruleset:
@@ -131,3 +134,55 @@ func _test_pile_counts() -> void:
 func _test_degenerate_viewport() -> void:
 	var layout := _layout(Vector2.ZERO)
 	_check.call(layout.slots.is_empty(), "layout: a zero viewport yields no rects rather than NaNs")
+
+
+## Every tableau slot holds a card, so nothing is transparent to clicks.
+func _full_tableau() -> PackedInt32Array:
+	var tableau := PackedInt32Array()
+	tableau.resize(28)
+	for i in 28:
+		tableau[i] = i
+	return tableau
+
+func _test_hit_test_basics() -> void:
+	var layout := _layout(LANDSCAPE_VIEW)
+	var full := _full_tableau()
+
+	var hit := LayoutResolver.hit_test(layout, layout.slots[21].get_center(), full)
+	_check.call(hit == Vector2i(BoardLayout.Target.TABLEAU, 21), "hit: the centre of a slot hits that slot")
+
+	hit = LayoutResolver.hit_test(layout, layout.stock.get_center(), full)
+	_check.call(hit.x == BoardLayout.Target.STOCK, "hit: the stock is clickable")
+
+	hit = LayoutResolver.hit_test(layout, layout.wastes[0].get_center(), full)
+	_check.call(hit == Vector2i(BoardLayout.Target.WASTE, 0), "hit: the waste is clickable")
+
+	hit = LayoutResolver.hit_test(layout, Vector2(-50, -50), full)
+	_check.call(hit.x == BoardLayout.Target.NONE, "hit: a click off the board hits nothing")
+
+## Rows overlap by half a card, so plenty of points sit inside two slots at once.
+## The lower row covers the upper one, so it must win -- otherwise the player
+## would select a card they can see is buried.
+func _test_hit_test_prefers_the_card_on_top() -> void:
+	var layout := _layout(LANDSCAPE_VIEW)
+	var full := _full_tableau()
+
+	# Slot 15 (row 5) and slot 21 (row 6) share a column; 21 covers 15.
+	var overlap := layout.slots[21].position + Vector2(layout.card_size.x * 0.5, layout.card_size.y * 0.1)
+	_check.call(layout.slots[15].has_point(overlap), "hit: the sample point really is inside both slots")
+	_check.call(
+		LayoutResolver.hit_test(layout, overlap, full) == Vector2i(BoardLayout.Target.TABLEAU, 21),
+		"hit: where two rows overlap, the covering card wins"
+	)
+
+## Removing a card is exactly what should make the card beneath it clickable.
+func _test_hit_test_ignores_empty_slots() -> void:
+	var layout := _layout(LANDSCAPE_VIEW)
+	var tableau := _full_tableau()
+	var overlap := layout.slots[21].position + Vector2(layout.card_size.x * 0.5, layout.card_size.y * 0.1)
+
+	tableau[21] = Card.NONE
+	_check.call(
+		LayoutResolver.hit_test(layout, overlap, tableau) == Vector2i(BoardLayout.Target.TABLEAU, 15),
+		"hit: an emptied slot lets the click fall through to the card it covered"
+	)

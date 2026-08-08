@@ -65,6 +65,23 @@ func sync_to_state(state: GameState) -> void:
 	_apply_layout()
 
 
+## Highlights one playable position, clearing any previous one. `zone` is a
+## Move.Zone; pass a negative index for "nothing selected".
+##
+## Call after sync_to_state(), which resets every card's appearance.
+func set_selection(zone: int, index: int) -> void:
+	for node in _slots:
+		node.set_selected(false)
+	for node in _wastes:
+		node.set_selected(false)
+	if index < 0:
+		return
+	if zone == Move.Zone.TABLEAU:
+		_slots[index].set_selected(true)
+	elif zone == Move.Zone.WASTE:
+		_wastes[index].set_selected(true)
+
+
 func relayout() -> void:
 	if _graph == null:
 		return

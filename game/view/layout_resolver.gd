@@ -105,5 +105,33 @@ static func _pile_anchors(
 	return anchors
 
 
+## What sits under `point`, as (BoardLayout.Target, index). Pure, so it is
+## unit-testable without a scene tree; BoardView never needs collision shapes.
+##
+## `tableau` is the state's slot-to-card array. Empty slots must not absorb
+## clicks: in a pyramid, removing a card is precisely what should make the card
+## it was covering clickable.
+static func hit_test(layout: BoardLayout, point: Vector2, tableau: PackedInt32Array) -> Vector2i:
+	if layout == null:
+		return Vector2i(BoardLayout.Target.NONE, -1)
+
+	# Reverse of draw order, so the card visually on top wins. Slot ids run top
+	# row first, so counting down tests lower rows -- the covering ones -- first.
+	for i in range(layout.slots.size() - 1, -1, -1):
+		if i < tableau.size() and tableau[i] == Card.NONE:
+			continue
+		if layout.slots[i].has_point(point):
+			return Vector2i(BoardLayout.Target.TABLEAU, i)
+
+	for i in range(layout.wastes.size() - 1, -1, -1):
+		if layout.wastes[i].has_point(point):
+			return Vector2i(BoardLayout.Target.WASTE, i)
+
+	if layout.stock.has_point(point):
+		return Vector2i(BoardLayout.Target.STOCK, 0)
+
+	return Vector2i(BoardLayout.Target.NONE, -1)
+
+
 static func _rect(unit_pos: Vector2, content: Rect2, origin: Vector2, card_px: Vector2) -> Rect2:
 	return Rect2(origin + (unit_pos - content.position) * card_px, card_px)

@@ -547,10 +547,10 @@ animation is ten times harder to diagnose than one found through a test.
 | # | Milestone | Done when |
 |---|---|---|
 | **M0** ✅ | Restructure. Directory layout, delete POC, import Kenney atlas, build `CardTheme` + `CardAtlas` | A test scene renders all 52 faces and the back from the atlas |
-| **M1** | Core engine, headless. `Card`, `Ruleset`, `SlotGraph`, `GameState`, `Move`, `RulesEngine` | Tests pass: deal produces 28 tableau + 24 stock; exposure is correct; legal moves are correct for hand-built positions |
-| **M2** | Static rendering. `LayoutResolver`, `BoardView.sync_to_state(animate=false)` | A dealt pyramid renders correctly, and stays correct when you resize the window and flip orientation |
-| **M3** | Input and matching. `GameController`, click-to-select, foundation | Playable, ugly, no animation. You can clear a pyramid |
-| **M4** | Stock, waste, game over | Full classic rules playable start to finish; win and stuck states both detected |
+| **M1** ✅ | Core engine, headless. `Card`, `Ruleset`, `SlotGraph`, `GameState`, `Move`, `RulesEngine` | Tests pass: deal produces 28 tableau + 24 stock; exposure is correct; legal moves are correct for hand-built positions |
+| **M2** ✅ | Static rendering. `LayoutResolver`, `BoardView.sync_to_state(animate=false)` | A dealt pyramid renders correctly, and stays correct when you resize the window and flip orientation |
+| **M3** ✅ | Input and matching. `GameController`, click-to-select, foundation | Playable, ugly, no animation. You can clear a pyramid |
+| **M4** | Surface the outcome. On-screen win/stuck, score, new game | Full classic rules playable start to finish *without watching the console*. Mostly done already: stock and waste render (M2) and drawing works (M3), so what is left is UI |
 | **M5** | Animation. `AnimationDirector`, deal / match / flip / invalid | Feels like a card game |
 | **M6** | Polish. Hints, sound, scoring, menu, win/lose screens | Shippable single-variant game |
 | **M7** | Solver + winnable deals (incl. the seed-pool decision from §10) | Winnable mode reliably produces solvable deals |
@@ -563,19 +563,28 @@ cost of fixing it is still bounded.
 
 ### Current status
 
-**M0, M1 and M2 are complete.** The rules engine plays classic Pyramid end to end, headless:
-deal by seed, enumerate legal moves, apply them, detect won and stuck. A dealt board renders
-and stays correct through window resizes and orientation flips, with covered cards dimmed
-straight from `is_exposed` — so the screen visibly agrees with the engine. 81 tests, and
-nothing in `game/core/` touches a Node.
+**M0 through M3 are complete. The game is playable.** Deal, select, match, discard Kings,
+draw from the stock, clear the pyramid, get stuck. 87 tests, and nothing in `game/core/`
+touches a Node.
 
-**Next: M3 — first playable.** `GameController` wiring click-to-select through the engine
-and back to `BoardView.sync_to_state()`. Hit testing goes against `BoardView.layout`, not
-collision shapes (§9). Cards will teleport rather than animate; that is M5's job.
+Controls: click to select, click again to match, click the stock to draw, click the
+background to deselect, **R** for a new game. Outcomes print to the console.
 
-The engine is deliberately ahead of the view now. M3 and M4 were originally split because
-M4 added stock-and-waste *logic*, but M1b built all of it under test, so what remains for
-both is presentation and input.
+**Next: M4 — surface the outcome.** The smallest milestone left: an on-screen score, a
+win/stuck banner and a new-game control. The original M4 has largely been absorbed —
+stock and waste render (M2) and drawing works (M3) — so this is UI only.
+
+**Then M5 — animation**, which is now the single biggest gap between this and something
+that feels like a card game. Cards teleport; dealing is instantaneous; an illegal pair gives
+no feedback at all beyond the selection moving. That last one is the §9 invalid-shake, left
+out on purpose because there was no animation system to put it in.
+
+Two rules that have held up under pressure and should keep holding:
+
+- `GameController` never decides legality. It looks moves up in `get_legal_moves()` and
+  applies what it finds, so it cannot disagree with the engine.
+- Hit testing is a pure function in `LayoutResolver`, not collision shapes — testable
+  without a scene tree, and nothing to rescale when the window changes.
 
 Deliberately still absent from the engine, each because it changes control flow and needs a
 variant that exercises it (M8): waste recycling / redeals, `allow_covering_pair`, and

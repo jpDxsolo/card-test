@@ -8,6 +8,9 @@ class_name BoardLayout
 
 enum Profile { LANDSCAPE, PORTRAIT }
 
+## What a click landed on. Returned by LayoutResolver.hit_test().
+enum Target { NONE, TABLEAU, WASTE, STOCK }
+
 var profile: Profile = Profile.LANDSCAPE
 
 ## Pixel size of one card at this scale. Every rect below is exactly this size.
