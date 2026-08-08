@@ -36,6 +36,8 @@ func _ready() -> void:
 	_test_draw_count_three()
 	_test_win_conditions()
 	_test_stuck()
+	# View-layer geometry lives in its own file but runs from the same scene.
+	LayoutTests.new().run(_check)
 	print("\n%d passed, %d failed" % [_passed, _failed])
 
 func _check(condition: bool, label: String) -> void:

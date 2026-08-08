@@ -302,11 +302,11 @@ while being wrong. This is left as-is deliberately: it makes the common case tri
 `atlas_check.tscn` catches a mismatch on the first run. Just override every field when
 authoring a second theme.
 
-**Open: source resolution.** 42 × 60 upscales ~2.7× on a 1280 × 720 desktop canvas
-(height-constrained to roughly 112 × 160 per card in a 7-row pyramid). Expect visible
-softness, with the rank glyphs blurring first; portrait mobile is fine at ~1.3×. Deliberately
-deferred to M2, when it can be judged on a real screen rather than predicted. Swapping to a
-higher-resolution atlas costs one `.tres` edit.
+**Source resolution — judged at M2, accepted.** 42 × 60 upscales ~2.8× on a 1280 × 720
+canvas (cards land around 118 × 169 in a 7-row pyramid). Viewed on a real screen this reads
+as acceptable rather than mushy, so the Kenney art stays for now. Nicer art is wanted
+eventually; when it arrives it is one `.tres` edit and no code change, which is the entire
+reason `CardTheme` exists.
 
 `CardAtlas` is a small autoload that builds and caches 53 `AtlasTexture` instances (52 faces
 + back) once at startup, keyed by card id. `CardNode` then just does
@@ -563,12 +563,19 @@ cost of fixing it is still bounded.
 
 ### Current status
 
-**M0 and M1 are complete.** The rules engine plays classic Pyramid end to end, headless:
-deal by seed, enumerate legal moves, apply them, detect won and stuck. 63 tests, no Nodes.
+**M0, M1 and M2 are complete.** The rules engine plays classic Pyramid end to end, headless:
+deal by seed, enumerate legal moves, apply them, detect won and stuck. A dealt board renders
+and stays correct through window resizes and orientation flips, with covered cards dimmed
+straight from `is_exposed` — so the screen visibly agrees with the engine. 81 tests, and
+nothing in `game/core/` touches a Node.
 
-**Next: M2** — the first pixels. `CardNode`, `LayoutResolver`, `BoardView.sync_to_state()`.
-Large enough to split: layout maths first, then the view that consumes it. M2 is also when
-the §6 question about 42 × 60 source art can finally be judged on a real screen.
+**Next: M3 — first playable.** `GameController` wiring click-to-select through the engine
+and back to `BoardView.sync_to_state()`. Hit testing goes against `BoardView.layout`, not
+collision shapes (§9). Cards will teleport rather than animate; that is M5's job.
+
+The engine is deliberately ahead of the view now. M3 and M4 were originally split because
+M4 added stock-and-waste *logic*, but M1b built all of it under test, so what remains for
+both is presentation and input.
 
 Deliberately still absent from the engine, each because it changes control flow and needs a
 variant that exercises it (M8): waste recycling / redeals, `allow_covering_pair`, and
@@ -612,8 +619,8 @@ That last one is quietly the most important — it's what makes every other bug 
 ## 16. Open questions
 
 1. ~~The Kenney sheet's cell metrics~~ — **resolved**, measured and recorded in §6.
-2. **Card source resolution** — 42 × 60 upscales ~2.7× on desktop. Judge at M2 on a real
-   screen; swapping atlases is a one-file change. (§6)
+2. ~~Card source resolution~~ — **resolved at M2**: acceptable on screen, art swap deferred
+   until nicer cards exist. One `.tres` edit when they do. (§6)
 3. **Godot 4.7 .NET web export support** — determines whether C# is available at all. (§10)
 3. **Portrait pyramid width** — 7 cards across a phone screen is tight. We may need a
    larger row overlap in portrait, or to accept smaller cards. Worth testing on a real

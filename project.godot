@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="CardTest"
-run/main_scene="uid://buavd038p2kxd"
+run/main_scene="res://scenes/board_preview.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
