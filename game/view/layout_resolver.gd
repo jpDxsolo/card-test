@@ -30,19 +30,23 @@ static func choose_profile(viewport: Vector2, previous: BoardLayout.Profile) -> 
 	return BoardLayout.Profile.PORTRAIT if aspect < TO_PORTRAIT else BoardLayout.Profile.LANDSCAPE
 
 
+## `area` is the region the board may occupy, in BoardView's local space -- not
+## necessarily the whole viewport. Reserving a strip for the HUD is just a
+## smaller area, so no UI ever has to overlap a card.
+##
 ## `source_card` is the card's size in source pixels, e.g. CardTheme.card_size().
 ## `previous` is last frame's profile, fed back so hysteresis works; pass the
 ## default on the first call.
 static func compute(
 	graph: SlotGraph,
 	ruleset: Ruleset,
-	viewport: Vector2,
+	area: Rect2,
 	source_card: Vector2,
 	previous: BoardLayout.Profile = BoardLayout.Profile.LANDSCAPE
 ) -> BoardLayout:
 	var layout := BoardLayout.new()
-	layout.profile = choose_profile(viewport, previous)
-	if viewport.x <= 0.0 or viewport.y <= 0.0 or graph.size() == 0:
+	layout.profile = choose_profile(area.size, previous)
+	if area.size.x <= 0.0 or area.size.y <= 0.0 or graph.size() == 0:
 		return layout
 
 	# 1. Place everything in card units.
@@ -57,14 +61,14 @@ static func compute(
 	# 3. The largest uniform scale that still fits. Note each axis is measured
 	#    against its own card dimension.
 	var scale := minf(
-		viewport.x / (content.size.x * source_card.x),
-		viewport.y / (content.size.y * source_card.y)
+		area.size.x / (content.size.x * source_card.x),
+		area.size.y / (content.size.y * source_card.y)
 	) * MARGIN
 	layout.card_size = source_card * scale
 
-	# 4. Centre the board and convert every anchor to pixels.
+	# 4. Centre the board within the area and convert every anchor to pixels.
 	var board_px := content.size * layout.card_size
-	var origin := (viewport - board_px) * 0.5
+	var origin := area.position + (area.size - board_px) * 0.5
 
 	layout.slots.resize(graph.size())
 	for slot in graph.slots:

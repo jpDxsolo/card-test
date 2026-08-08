@@ -25,6 +25,7 @@ func run(check: Callable) -> void:
 	_test_row_overlap_is_half_a_card_height()
 	_test_uniform_card_size()
 	_test_board_fits_and_is_centred()
+	_test_reserved_area_is_respected()
 	_test_pile_counts()
 	_test_degenerate_viewport()
 	_test_hit_test_basics()
@@ -36,8 +37,21 @@ func _rules() -> Ruleset:
 	return (load(CLASSIC) as Ruleset).duplicate() as Ruleset
 
 func _layout(viewport: Vector2, previous := BoardLayout.Profile.LANDSCAPE) -> BoardLayout:
+	return _layout_in(Rect2(Vector2.ZERO, viewport), previous)
+
+func _layout_in(area: Rect2, previous := BoardLayout.Profile.LANDSCAPE) -> BoardLayout:
 	var rules := _rules()
-	return LayoutResolver.compute(SlotGraph.new(rules), rules, viewport, SOURCE, previous)
+	return LayoutResolver.compute(SlotGraph.new(rules), rules, area, SOURCE, previous)
+
+## Union of every rect in a layout.
+func _bounds_of(layout: BoardLayout) -> Rect2:
+	var box := layout.slots[0]
+	for rect in layout.slots:
+		box = box.merge(rect)
+	box = box.merge(layout.stock).merge(layout.foundation)
+	for rect in layout.wastes:
+		box = box.merge(rect)
+	return box
 
 
 func _test_profile_choice() -> void:
@@ -104,19 +118,35 @@ func _test_uniform_card_size() -> void:
 func _test_board_fits_and_is_centred() -> void:
 	for viewport in [LANDSCAPE_VIEW, PORTRAIT_VIEW]:
 		var layout := _layout(viewport)
-		var board := layout.slots[0]
-		for rect in layout.slots:
-			board = board.merge(rect)
-		board = board.merge(layout.stock).merge(layout.foundation)
-		for rect in layout.wastes:
-			board = board.merge(rect)
-
+		var board := _bounds_of(layout)
 		var screen := Rect2(Vector2.ZERO, viewport)
 		_check.call(screen.encloses(board), "layout: the whole board fits on screen at %v" % viewport)
 		_check.call(
 			board.get_center().is_equal_approx(viewport * 0.5),
 			"layout: the board is centred at %v" % viewport
 		)
+
+## The HUD reserves a strip along the top. The board must fit under it, not
+## merely be centred in a shifted box -- this is the overlap that put text on
+## top of the pyramid's apex.
+func _test_reserved_area_is_respected() -> void:
+	var inset := 90.0
+	var area := Rect2(0.0, inset, LANDSCAPE_VIEW.x, LANDSCAPE_VIEW.y - inset)
+	var layout := _layout_in(area)
+	var board := _bounds_of(layout)
+
+	_check.call(area.encloses(board), "layout: the board stays inside the reserved area")
+	_check.call(board.position.y >= inset, "layout: nothing is drawn above the HUD strip")
+	_check.call(
+		board.get_center().is_equal_approx(area.get_center()),
+		"layout: the board centres on the area, not the viewport"
+	)
+
+	# A shorter area must produce smaller cards, not an overflowing board.
+	_check.call(
+		layout.card_size.y < _layout(LANDSCAPE_VIEW).card_size.y,
+		"layout: reserving space shrinks the cards rather than clipping them"
+	)
 
 func _test_pile_counts() -> void:
 	var layout := _layout(LANDSCAPE_VIEW)
@@ -126,7 +156,7 @@ func _test_pile_counts() -> void:
 	var rules := _rules()
 	rules.waste_pile_count = 3                 # Apophis
 	var apophis := LayoutResolver.compute(
-		SlotGraph.new(rules), rules, LANDSCAPE_VIEW, SOURCE
+		SlotGraph.new(rules), rules, Rect2(Vector2.ZERO, LANDSCAPE_VIEW), SOURCE
 	)
 	_check.call(apophis.wastes.size() == 3, "layout: three waste piles when the ruleset asks for three")
 

@@ -18,22 +18,31 @@ var _ruleset: Ruleset
 var _graph: SlotGraph
 var _state: GameState
 var _board: BoardView
+var _hud: Hud
 var _selected := NO_SELECTION
+var _seed := 0
 
 
 func _ready() -> void:
 	_ruleset = load(CLASSIC) as Ruleset
 	_graph = SlotGraph.new(_ruleset)
 
+	# HUD first: the board needs its height to know how much room to leave.
+	# Draw order is unaffected -- Hud is a CanvasLayer and sits above regardless.
+	_hud = Hud.new()
+	add_child(_hud)
+	_hud.new_game_requested.connect(func() -> void: new_game(randi()))
+
 	_board = BoardView.new()
 	add_child(_board)                  # must be in the tree before setup(): it reads the viewport
+	_board.top_inset = _hud.reserved_height()
 	_board.setup(_graph, _ruleset)
 
 	new_game(deal_seed if deal_seed != 0 else randi())
 
 
 func new_game(game_seed: int) -> void:
-	print("--- new game, seed %d ---" % game_seed)
+	_seed = game_seed
 	_state = RulesEngine.deal(_ruleset, _graph, game_seed)
 	_selected = NO_SELECTION
 	_refresh()
@@ -120,7 +129,6 @@ func _play(move: Move) -> void:
 	RulesEngine.apply(_state, move, _ruleset)
 	_selected = NO_SELECTION                       # a draw changes what waste[0] means
 	_refresh()
-	_report_outcome()
 
 
 func _is_playable(pos: Vector2i) -> bool:
@@ -129,14 +137,28 @@ func _is_playable(pos: Vector2i) -> bool:
 	return _state.peek_waste(pos.y) != Card.NONE
 
 
+## Everything the player sees is redrawn from the state on every change, so
+## there is no incremental bookkeeping to fall out of step with the game.
 func _refresh() -> void:
 	_board.sync_to_state(_state)
 	_board.set_selection(_selected.x, _selected.y)
+	_hud.set_stats(RulesEngine.score(_state), _state.stock_remaining(), _waste_total(), _seed)
+	_show_outcome()
 
 
-## Console only for now; M4 puts this on screen.
-func _report_outcome() -> void:
+## Checked after every change rather than only after a move: a deal, a draw and
+## a match can each be the thing that ends the game.
+func _show_outcome() -> void:
 	if RulesEngine.is_won(_state, _ruleset):
-		print("You win. Score %d." % RulesEngine.score(_state))
+		_hud.show_outcome("You win\nEvery card cleared")
 	elif RulesEngine.is_stuck(_state, _graph, _ruleset):
-		print("Stuck -- no moves left. Score %d (cards remaining)." % RulesEngine.score(_state))
+		_hud.show_outcome("No moves left\n%d cards remaining" % RulesEngine.score(_state))
+	else:
+		_hud.hide_outcome()
+
+
+func _waste_total() -> int:
+	var total := 0
+	for pile in _state.wastes:
+		total += pile.size()
+	return total

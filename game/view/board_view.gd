@@ -13,6 +13,10 @@ extends Node2D
 ## collision shapes, which would need rescaling on every resize (PLAN.md §9).
 var layout: BoardLayout
 
+## Pixels reserved along the top edge for the HUD. The board is laid out below
+## it, so on-screen text never sits over a card.
+var top_inset := 0.0
+
 var _graph: SlotGraph
 var _ruleset: Ruleset
 var _profile := BoardLayout.Profile.LANDSCAPE
@@ -85,8 +89,10 @@ func set_selection(zone: int, index: int) -> void:
 func relayout() -> void:
 	if _graph == null:
 		return
+	var size := get_viewport_rect().size
+	var area := Rect2(0.0, top_inset, size.x, maxf(size.y - top_inset, 0.0))
 	layout = LayoutResolver.compute(
-		_graph, _ruleset, get_viewport_rect().size, CardAtlas.theme.card_size(), _profile
+		_graph, _ruleset, area, CardAtlas.theme.card_size(), _profile
 	)
 	_profile = layout.profile
 	_apply_layout()

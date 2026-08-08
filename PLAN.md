@@ -354,8 +354,10 @@ The algorithm:
    independently. Scaling both by width squashes rows to a 65% overlap and makes
    `bounds()` under-report the pyramid's height by 30%, so cards overflow the box that
    was just fitted to them.
-3. Compute the bounding box in card units, derive `scale = min(vw / bw, vh / bh)` with a
-   margin factor, and centre.
+3. Compute the bounding box in card units, derive `scale = min(aw / bw, ah / bh)` with a
+   margin factor, and centre — where the `a` dimensions are the **content area**, not the
+   viewport. `compute()` takes a `Rect2`, so reserving a strip for the HUD (or a future
+   toolbar) is just a smaller rectangle. Cards shrink to fit; nothing is ever covered.
 4. Convert every `grid_pos` to a pixel `Rect2`.
 
 Hook `get_tree().root.size_changed`, recompute, and tween cards to their new rects over
@@ -550,7 +552,7 @@ animation is ten times harder to diagnose than one found through a test.
 | **M1** ✅ | Core engine, headless. `Card`, `Ruleset`, `SlotGraph`, `GameState`, `Move`, `RulesEngine` | Tests pass: deal produces 28 tableau + 24 stock; exposure is correct; legal moves are correct for hand-built positions |
 | **M2** ✅ | Static rendering. `LayoutResolver`, `BoardView.sync_to_state(animate=false)` | A dealt pyramid renders correctly, and stays correct when you resize the window and flip orientation |
 | **M3** ✅ | Input and matching. `GameController`, click-to-select, foundation | Playable, ugly, no animation. You can clear a pyramid |
-| **M4** | Surface the outcome. On-screen win/stuck, score, new game | Full classic rules playable start to finish *without watching the console*. Mostly done already: stock and waste render (M2) and drawing works (M3), so what is left is UI |
+| **M4** ✅ | Surface the outcome. On-screen win/stuck, score, new game | Full classic rules playable start to finish *without watching the console*. Mostly done already: stock and waste render (M2) and drawing works (M3), so what is left is UI |
 | **M5** | Animation. `AnimationDirector`, deal / match / flip / invalid | Feels like a card game |
 | **M6** | Polish. Hints, sound, scoring, menu, win/lose screens | Shippable single-variant game |
 | **M7** | Solver + winnable deals (incl. the seed-pool decision from §10) | Winnable mode reliably produces solvable deals |
@@ -563,28 +565,37 @@ cost of fixing it is still bounded.
 
 ### Current status
 
-**M0 through M3 are complete. The game is playable.** Deal, select, match, discard Kings,
-draw from the stock, clear the pyramid, get stuck. 87 tests, and nothing in `game/core/`
+**M0 through M4 are complete. Classic Pyramid is fully playable.** Deal, select, match,
+discard Kings, draw from the stock, clear the pyramid or get stuck — with the score, the
+deal seed and an end-of-game banner on screen. 92 tests, and nothing in `game/core/`
 touches a Node.
 
 Controls: click to select, click again to match, click the stock to draw, click the
-background to deselect, **R** for a new game. Outcomes print to the console.
+background to deselect, **R** for a new game.
 
-**Next: M4 — surface the outcome.** The smallest milestone left: an on-screen score, a
-win/stuck banner and a new-game control. The original M4 has largely been absorbed —
-stock and waste render (M2) and drawing works (M3) — so this is UI only.
+**Next: M5 — animation.** The single biggest gap between this and something that feels like
+a card game. Cards teleport, dealing is instantaneous, and an illegal pair gives no feedback
+beyond the selection moving — that last one is the §9 invalid-shake, left out on purpose
+because there was no animation system to put it in.
 
-**Then M5 — animation**, which is now the single biggest gap between this and something
-that feels like a card game. Cards teleport; dealing is instantaneous; an illegal pair gives
-no feedback at all beyond the selection moving. That last one is the §9 invalid-shake, left
-out on purpose because there was no animation system to put it in.
+The constraint that makes M5 safe is already in place: `sync_to_state()` rebuilds the board
+from the state every call, so the view is a pure function of the state. Animation layers on
+top of that rather than replacing it, which is what keeps skip-animation and desync recovery
+possible (§8).
 
-Two rules that have held up under pressure and should keep holding:
+### Four rules that have held up under pressure
 
-- `GameController` never decides legality. It looks moves up in `get_legal_moves()` and
-  applies what it finds, so it cannot disagree with the engine.
-- Hit testing is a pure function in `LayoutResolver`, not collision shapes — testable
-  without a scene tree, and nothing to rescale when the window changes.
+Worth stating plainly, because each has already prevented a class of bug and all four should
+survive the milestones ahead:
+
+1. **`game/core/` imports no Node.** Every rule is headlessly testable, and the M7 solver
+   stays feasible.
+2. **`GameController` never decides legality.** It looks moves up in `get_legal_moves()` and
+   applies what it finds, so it cannot disagree with the engine.
+3. **Hit testing is a pure function**, not collision shapes — unit-testable without a scene
+   tree, and nothing to rescale on resize.
+4. **The board lays out inside a content area, never the raw viewport.** UI reserves space;
+   cards shrink to fit rather than being covered.
 
 Deliberately still absent from the engine, each because it changes control flow and needs a
 variant that exercises it (M8): waste recycling / redeals, `allow_covering_pair`, and
