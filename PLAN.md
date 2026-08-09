@@ -553,7 +553,7 @@ animation is ten times harder to diagnose than one found through a test.
 | **M2** ✅ | Static rendering. `LayoutResolver`, `BoardView.sync_to_state(animate=false)` | A dealt pyramid renders correctly, and stays correct when you resize the window and flip orientation |
 | **M3** ✅ | Input and matching. `GameController`, click-to-select, foundation | Playable, ugly, no animation. You can clear a pyramid |
 | **M4** ✅ | Surface the outcome. On-screen win/stuck, score, new game | Full classic rules playable start to finish *without watching the console*. Mostly done already: stock and waste render (M2) and drawing works (M3), so what is left is UI |
-| **M5** | Animation. `AnimationDirector`, deal / match / flip / invalid | Feels like a card game |
+| **M5** ✅ | Animation. `AnimationDirector`, deal / match / flip / invalid | Feels like a card game |
 | **M6** | Polish. Hints, sound, scoring, menu, win/lose screens | Shippable single-variant game |
 | **M7** | Solver + winnable deals (incl. the seed-pool decision from §10) | Winnable mode reliably produces solvable deals |
 | **M8** | **Variant proof.** Add Relaxed and Triangle | Both added as `.tres` files only. *If either requires an engine change, the abstraction is wrong and we fix it here* |
@@ -565,23 +565,50 @@ cost of fixing it is still bounded.
 
 ### Current status
 
-**M0 through M4 are complete. Classic Pyramid is fully playable.** Deal, select, match,
-discard Kings, draw from the stock, clear the pyramid or get stuck — with the score, the
-deal seed and an end-of-game banner on screen. 92 tests, and nothing in `game/core/`
-touches a Node.
+**M0 through M5 are complete. Classic Pyramid is playable and animated.** Deal, select,
+match, discard Kings, draw from the stock, clear the pyramid or get stuck — with the score,
+the deal seed and an end-of-game banner on screen. 97 rules tests and 23 animation tests,
+and nothing in `game/core/` touches a Node.
 
 Controls: click to select, click again to match, click the stock to draw, click the
-background to deselect, **R** for a new game.
+background to deselect, **R** for a new game. During the deal or the win cascade, a click
+skips it.
 
-**Next: M5 — animation.** The single biggest gap between this and something that feels like
-a card game. Cards teleport, dealing is instantaneous, and an illegal pair gives no feedback
-beyond the selection moving — that last one is the §9 invalid-shake, left out on purpose
-because there was no animation system to put it in.
+**How M5 kept the §8 promise.** The load-bearing decision was to animate with *ghosts*:
+throwaway `CardNode`s owned by `AnimationDirector`, drawn over a board that has already
+re-synced. A match commits to the state, `BoardView` immediately hides the matched cards,
+and only then do two ghosts fly to the foundation. The board is therefore never waiting on a
+tween to become correct, which is what makes `skip()` safe to call at any instant and why a
+dropped animation cannot desync anything.
 
-The constraint that makes M5 safe is already in place: `sync_to_state()` rebuilds the board
-from the state every call, so the view is a pure function of the state. Animation layers on
-top of that rather than replacing it, which is what keeps skip-animation and desync recovery
-possible (§8).
+The deal is the one exception — it animates the real card nodes, because there is no board
+to be out of sync with yet. That is also the only thing, along with the win cascade, that
+takes the input lock. `BoardView.stop_deal()` exists precisely because interrupting it
+leaves real cards mid-flight, and `tests/anim_tests.gd` asserts the recovery.
+
+**The one piece of bookkeeping.** Ghosts alone are not quite enough: the state commits the
+instant a move is applied, so a destination pile would render the card it had just received
+while the ghost carrying it was still crossing the screen — the card visibly in two places
+at once. `BoardView` therefore *holds* the top N cards of a pile until their flight lands,
+rendering the pile as if they were not there yet. The foundation and the waste both need it.
+
+This is the only incremental state in the view, and it is built to self-correct rather than
+to be got right: holds only ever count down, every flight releases its own on arrival,
+`skip()` kills the running tween so no stale callback can fire, and `clear_holds()` covers
+the abandoned case. The invariant is that holds are always zero at rest — which
+`tests/anim_tests.gd` asserts directly, because a leaked hold would silently under-report a
+pile long before it looked wrong.
+
+Two more things worth knowing before M6 touches this code:
+
+- Every animated quantity on `CardNode` (`_lift`, `_offset`, `_flip`) is a member folded
+  into the single `_refresh()`, never a direct write to `position` or `scale`. Tweens and
+  layout changes both go through that funnel, so they cannot fight, and a resize mid-flight
+  redirects cards instead of tearing them.
+- The deal reads its rects from `layout` *inside* the tween rather than capturing them, so
+  resizing the window mid-deal redirects the cards in flight.
+
+**Next: M6 — polish.** Hints, sound, scoring, menu, win/lose screens.
 
 ### Four rules that have held up under pressure
 
@@ -657,3 +684,72 @@ stats and save/resume, daily challenges, animated card backs and themes beyond t
 mechanism, achievements, and the remaining variants (Apophis, Giza, cells, reserve rows,
 Par Pyramid redeals, Spanish deck) — all of which the §5 schema already accommodates when
 we want them.
+
+---
+
+## 18. Tri Peaks — sketch after v1, not before
+
+**Deferred on purpose.** Tri Peaks (Three Peaks / Tri Towers) is worth building, but the
+design work happens *after* the current code reaches its final state — once M5–M8 have run
+their course we will know how the abstractions actually held up, and can plan it with all
+the information instead of guessing from M4.
+
+Recording the analysis now so the deferral is informed rather than vague.
+
+### The tableau half fits with no engine change
+
+This is `SlotGraph` (§4) doing exactly its job. Three overlapping peaks are just a different
+graph — 28 slots, a bottom row of 10, each card covered by the two below it. Everything
+downstream is topology-agnostic already:
+
+- `is_exposed()` is a pure graph rule and needs nothing
+- `deal()` sizes the tableau from `graph.size()`, so 28 tableau + 24 stock falls out free
+- `LayoutResolver` works from `graph.bounds()` and `grid_pos`, so a 10-wide, 4-tall board
+  lays out, scales and hit-tests unchanged
+- `WinCondition.CLEAR_TABLEAU` already exists and is Tri Peaks' win condition
+- Kings-alone is switched off by data: `single_discard_value = 0`, as no card is worth 0
+
+The work is a `Shape.THREE_PEAKS` and a `_build_three_peaks()` beside `_build_pyramid()` —
+the same shape of change M8 already anticipates for Triangle.
+
+### The matching half does not fit, and no config makes it
+
+The engine models matching as: gather every playable spot, pair *any two* summing to
+`target_sum`. Tri Peaks is a structurally different relation, not a tweak to that predicate:
+
+| | Pyramid | Tri Peaks |
+|---|---|---|
+| Move shape | two board cards | one tableau card → waste top |
+| Relation | sum to `target_sum` | rank ±1 |
+| Symmetric | yes, any two spots | no, always tableau → waste |
+| Destination | foundation | **becomes the new waste top** |
+| Two exposed tableau cards | matchable | never matchable |
+
+That last row is the decisive one — it rules out expressing Tri Peaks as a different
+pairing predicate over the same generator. What it needs:
+
+- a `Move.Type.PLAY_TO_WASTE` (single-card, like `DISCARD_SINGLE`)
+- an `apply()` branch pushing to the waste rather than the foundation
+- a `MatchMode { SUM_PAIR, RANK_ADJACENT }` on `Ruleset`, branched in **exactly one place**:
+  move generation
+- `rank_wraps: bool` for the K→A→2 wrap
+- `initial_waste_count: int` — Tri Peaks turns one stock card up at deal time
+
+The controller change is genuinely small: Tri Peaks is single-click, and `_click_card`
+already has a single-click resolution path for `DISCARD_SINGLE` that `PLAY_TO_WASTE` slots
+into.
+
+### Two things to hold on to
+
+**It is additive, not a refactor.** One new graph builder, one new move type, one branch in
+move generation. Nothing gets torn down and all four §14 rules survive.
+
+**Tri Peaks failing the data-only bar says nothing about the abstraction.** §5 scopes the
+`Ruleset` to documented *Pyramid* variants, and M8's test is specifically Relaxed and
+Triangle as `.tres` files only. Tri Peaks is a different game family that happens to share
+the covered-slot tableau — it was never in the set the schema was meant to express. Do not
+read an engine change here as the M8 verdict.
+
+**Sequencing:** after M8 at the earliest. Adding a `MatchMode` branch beforehand would
+change the very thing M8 exists to test, and it violates the §5 rule that unused branching
+logic is not harmless. Add the branch when there is a second real consumer for it.
